@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import Sidebar from "@/components/sidebar"
 
 export default function Account() {
   const [passwordInput, setPasswordInput] = useState("")
@@ -51,6 +52,10 @@ export default function Account() {
   }
 
   return (
+
+    <div className="flex">
+    <Sidebar />
+    <main className="flex-1 p-6">
     <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4 dark:bg-gray-950">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="text-center">
@@ -85,6 +90,8 @@ export default function Account() {
           )}
         </CardContent>
       </Card>
+    </div>
+    </main>
     </div>
   )
 }
