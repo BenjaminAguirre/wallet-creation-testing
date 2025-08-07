@@ -1,39 +1,71 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
+import { generateMnemonicFromGoogle, generateMnemonic, deriveAkash, generatexPubxPriv, generateFluxAddress } from "../../lib/wallet"
+import BackupKey from "./BackUpKey"
+import SetPassword from "./SetPassword"
+import Account from "../account/page"
+import { encrypt as passworderEncrypt } from "@metamask/browser-passworder"
+import secureLocalStorage from "react-secure-storage"
+import ImportWallet from "../import/ImportWallet"
+import { useRouter } from "next/navigation";
 
-// Declara el namespace 'google' en el objeto Window para TypeScript
 declare global {
   interface Window {
     google: any
-    handleSignInWithGoogle: (response: any) => Promise<void>
+    handleSignInWithGoogle?: (response: any) => Promise<void>
   }
 }
 
-// Objeto 'wallet' simulado para propósitos de demostración.
-// DEBES reemplazar esto con tu implementación real de 'wallet'.
-const wallet = {
-  createZkIdentity: async (input: any) => {
-    console.log("Mock wallet.createZkIdentity llamado con:", input)
-    // Simula una operación asíncrona
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({ id: `zk-identity-${Math.random().toString(36).substring(7)}`, data: input })
-      }, 500)
-    })
-  },
+interface GooglePayload {
+  email: string
+  sub: string
+  name?: string
+  picture?: string
+  [key: string]: any
 }
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
-  const [pendingIdentity, setPendingIdentity] = useState<any>(null)
-  const [googlePayload, setGooglePayload] = useState<any>(null)
-  const [authMethod] = useState("google") // Asumimos que "google" es el método de autenticación principal aquí
+  const [backupConfirmed, setBackupConfirmed] = useState(false)
+  const [akashAddress, setAkashAddress] = useState<any>(null)
+  const [fluxAddress, setFluxAddress] = useState<any>(null)
+  const [mnemonic, setMnemonic] = useState<string | null>(null)
+  const [isDeterministic, setIsDeterministic] = useState(false)
+  const [passwordToUse, setPasswordToUse] = useState<string | null>(null)
+  const [showAccount, setShowAccount] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [walletExists, setWalletExists] = useState<boolean | null>(null);
+  const router = useRouter();
+
+
+
 
   useEffect(() => {
-    // Función para cargar el script de Google GSI
+    const walletSeed = secureLocalStorage.getItem("walletSeed");
+    console.log("walletSeed value:", walletSeed);
+
+    if (walletSeed !== null) {
+      setWalletExists(true); 
+    } 
+  }, []);
+  useEffect(() => {
+    if (walletExists) {
+      router.push("/account");
+    }
+  }, [walletExists]);
+
+
+  useEffect(() => {
     const loadGoogleScript = () => {
       const script = document.createElement("script")
       script.src = "https://accounts.google.com/gsi/client"
@@ -44,116 +76,196 @@ export default function LoginPage() {
       document.head.appendChild(script)
     }
 
-    // Define la función de callback global para Google Sign-In
     window.handleSignInWithGoogle = async (response: any) => {
       setIsLoading(true)
       setLoginError(null)
       try {
         const idToken = response.credential
-        console.log("Token de ID de Google recibido:", idToken)
+        const payload = JSON.parse(atob(idToken.split(".")[1])) as GooglePayload
 
-        // Decodifica el token de ID para obtener el payload
-        const payload = JSON.parse(atob(idToken.split(".")[1]))
-        console.log("Payload de Google decodificado:", payload)
-
-        // Llama a tu API de backend para verificar el token
         const backendResponse = await fetch("/api/auth/google", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ idToken }),
         })
 
         const data = await backendResponse.json()
+        if (!backendResponse.ok) throw new Error(data.error || "Fallo en la verificación con backend.")
 
-        if (!backendResponse.ok) {
-          throw new Error(data.error || "Fallo al verificar el token con el backend.")
-        }
-
-        console.log("Verificación de backend exitosa:", data.user)
-
-        // Lógica específica de tu 'wallet'
         const ZkAuthInput = {
           providerId: payload.sub,
           email: payload.email,
+          deterministic: isDeterministic,
         }
-        const zkIdentity = await wallet.createZkIdentity(ZkAuthInput)
-        setPendingIdentity(zkIdentity)
-        setGooglePayload(payload)
 
-        // Opcionalmente, redirige o actualiza la interfaz de usuario tras un inicio de sesión exitoso
-        alert(`¡Inicio de sesión exitoso! Bienvenido, ${data.user.name || data.user.email}`)
-      } catch (error: any) {
-        console.error("Error durante el proceso de inicio de sesión de Google:", error)
-        setLoginError(error.message || "Ocurrió un error inesperado durante el inicio de sesión.")
+        const zkIdentity = await generateMnemonicFromGoogle(
+          ZkAuthInput.providerId,
+          ZkAuthInput.email,
+          ZkAuthInput.deterministic
+        )
+
+        const accounts = await zkIdentity.akashData.getAccounts()
+        const firstAccount = accounts[0]
+        setMnemonic(zkIdentity.mnemonic)
+        setAkashAddress(firstAccount?.address || "No address found")
+      } catch (err: any) {
+        console.error("Error durante el login:", err)
+        setLoginError(err.message || "Error inesperado.")
       } finally {
         setIsLoading(false)
       }
     }
 
-    // Inicializa Google Sign-In si el script ya está cargado
     if (window.google) {
       initializeGoogleSignIn()
     } else {
       loadGoogleScript()
     }
 
-    // Función de limpieza
     return () => {
       if (window.google) {
-        window.google.accounts.id.cancel() // Cancela cualquier proceso de GSI pendiente
+        window.google.accounts.id.cancel()
       }
-      delete window.handleSignInWithGoogle // Elimina el manejador global
+      delete window.handleSignInWithGoogle
     }
-  }, [authMethod]) // Se ejecuta de nuevo si authMethod cambia
+  }, [isDeterministic])
+
+  const handleManualMnemonicGeneration = async () => {
+    const mnemonic = await generateMnemonic()
+    const akashData = await deriveAkash(mnemonic);
+    const account = await akashData.getAccounts();
+    const returnData = await generatexPubxPriv(mnemonic, 44, 19167, 0, '0');
+    const fluxAddress = await generateFluxAddress(returnData.xpriv)
+    console.log(fluxAddress);
+    console.log(returnData);
+
+    setAkashAddress(account[0].address || "No address found")
+    setMnemonic(mnemonic)
+  }
 
   const initializeGoogleSignIn = () => {
-    if (window.google && authMethod === "google") {
-      window.google.accounts.id.initialize({
-        client_id:
-          process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
-          "903556090114-9n31t9go10a5ipodeh4jm7ac99fgiuvg.apps.googleusercontent.com",
-        callback: window.handleSignInWithGoogle,
-        auto_select: false,
-        cancel_on_tap_outside: true,
+    if (!window.google) return
+
+    window.google.accounts.id.initialize({
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      callback: window.handleSignInWithGoogle,
+      auto_select: false,
+      cancel_on_tap_outside: true,
+    })
+
+    const button = document.getElementById("google-signin-button")
+    if (button) {
+      window.google.accounts.id.renderButton(button, {
+        theme: "outline",
+        size: "large",
+        shape: "pill",
+        text: "continue_with",
+        logo_alignment: "left",
       })
-      // Renderiza el botón solo si el elemento existe
-      const googleButton = document.getElementById("google-signin-button")
-      if (googleButton) {
-        window.google.accounts.id.renderButton(googleButton, {
-          theme: "outline",
-          size: "large",
-          type: "standard",
-          shape: "pill",
-          text: "signin_with",
-          logo_alignment: "left",
-        })
-      } else {
-        console.warn("Elemento del botón de Google Sign-In no encontrado.")
-      }
     }
   }
 
+  // Paso intermedio para ingresar contraseña
+  if (mnemonic && !passwordToUse) {
+    return (
+      <SetPassword
+        onConfirm={(password) => {
+          setPasswordToUse(password)
+        }}
+      />
+    )
+  }
+
+  // Mostrar pantalla de backup
+  if (mnemonic && !backupConfirmed) {
+    return (
+      <BackupKey
+        seedPhrase={mnemonic}
+        deterministic={isDeterministic}
+        onConfirm={ () => {
+          if (passwordToUse) {
+            const blob =  passworderEncrypt(passwordToUse, mnemonic)
+            secureLocalStorage.setItem("walletSeed", blob)
+          }
+          localStorage.setItem("account", JSON.stringify({ "akashAddress": akashAddress, "fluxAddress": fluxAddress }))
+          setBackupConfirmed(true)
+          setShowAccount(true)
+        }}
+      />
+    )
+  }
+
+  // Una vez terminado el flujo, mostrar Account embebido
+  if (showAccount) {
+    return <Account />
+  }
+
+  if (showImport) {
+    return <ImportWallet />
+  }
+
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-gray-100 px-4 dark:bg-gray-950">
+    <div className="flex flex-col items-center justify-center gap-8 min-h-[100dvh] bg-gray-100 px-4 dark:bg-gray-950">
+      {/* Google Auth Card */}
       <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-2xl font-bold">Iniciar Sesión</CardTitle>
-          <CardDescription>Inicia sesión con tu cuenta de Google</CardDescription>
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">Sign in with Google</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex justify-center">
-            <div id="google-signin-button" className="w-full max-w-xs"></div>
-          </div>
-          {isLoading && <div className="text-center text-sm text-muted-foreground">Cargando...</div>}
+        <CardContent className="space-y-6">
+          {isLoading && <div className="text-center text-sm text-muted-foreground">loading...</div>}
           {loginError && <div className="text-center text-sm text-red-500">{loginError}</div>}
-          {pendingIdentity && (
-            <div className="text-center text-sm text-green-600">
-              <p>ZkIdentity creada: {pendingIdentity.id}</p>
-              <p>Email de Google: {googlePayload?.email}</p>
-            </div>
+
+          {!mnemonic && !akashAddress && (
+            <>
+              <div className="flex items-center justify-between px-2">
+                <Label htmlFor="deterministic" className="text-sm font-medium">
+                  Deterministic
+                </Label>
+                <Switch
+                  id="deterministic"
+                  checked={isDeterministic}
+                  onCheckedChange={setIsDeterministic}
+                />
+              </div>
+              <div className="flex justify-center">
+                <div id="google-signin-button" className="w-full max-w-xs" />
+              </div>
+            </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Manual Mnemonic Card */}
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">Import from a recovery phrase</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 text-center">
+          <p className="text-sm text-muted-foreground">
+            This will import your account from a recovery phrase.
+          </p>
+          <button
+            onClick={() => setShowImport(true)}
+            className="w-full bg-primary text-white py-2 px-4 rounded-md hover:bg-primary/90 transition"
+          >
+            Import from a Recovery Phrase
+          </button>
+        </CardContent>
+      </Card>
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">Generate a recovery phrase</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 text-center">
+          <p className="text-sm text-muted-foreground">
+            This will generate a random wallet with a seed phrase you must back up manually.
+          </p>
+          <button
+            onClick={handleManualMnemonicGeneration}
+            className="w-full bg-primary text-white py-2 px-4 rounded-md hover:bg-primary/90 transition"
+          >
+            Generate Recovery Phrase
+          </button>
         </CardContent>
       </Card>
     </div>
