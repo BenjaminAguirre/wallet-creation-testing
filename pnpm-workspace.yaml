@@ -1,0 +1,7 @@
+ignoredBuiltDependencies:
+  - '@tailwindcss/oxide'
+  - keytar
+  - protobufjs
+  - secp256k1
+  - sharp
+  - unrs-resolver

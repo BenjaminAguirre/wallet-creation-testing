@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { generateMnemonicFromGoogle, generateMnemonic, deriveAkash, generatexPubxPriv, generateFluxAddress } from "../../lib/wallet"
+import { generateMnemonicFromGoogle, generateMnemonic, deriveAkash, generatexPubxPriv, generateFluxKeyPair, generateExternalIdentityKeypair} from "../../lib/wallet"
 import BackupKey from "./BackUpKey"
 import SetPassword from "./SetPassword"
 import Account from "../account/page"
@@ -39,6 +39,9 @@ export default function LoginPage() {
   const [backupConfirmed, setBackupConfirmed] = useState(false)
   const [akashAddress, setAkashAddress] = useState<any>(null)
   const [fluxAddress, setFluxAddress] = useState<any>(null)
+  const [fluxId, setFluxId] = useState<any>(null)
+  const[FluxIdPrivKey, setFluxIdPrivKey] = useState<any>(null)
+  const[FluxWifPrivKey, setFluxPrivKeyWif] = useState<any>(null)
   const [mnemonic, setMnemonic] = useState<string | null>(null)
   const [isDeterministic, setIsDeterministic] = useState(false)
   const [passwordToUse, setPasswordToUse] = useState<string | null>(null)
@@ -52,7 +55,6 @@ export default function LoginPage() {
 
   useEffect(() => {
     const walletSeed = secureLocalStorage.getItem("walletSeed");
-    console.log("walletSeed value:", walletSeed);
 
     if (walletSeed !== null) {
       setWalletExists(true); 
@@ -135,12 +137,17 @@ export default function LoginPage() {
     const akashData = await deriveAkash(mnemonic);
     const account = await akashData.getAccounts();
     const returnData = await generatexPubxPriv(mnemonic, 44, 19167, 0, '0');
-    const fluxAddress = await generateFluxAddress(returnData.xpriv)
-    console.log(fluxAddress);
-    console.log(returnData);
+    const fluxAddress = await generateFluxKeyPair(returnData.xpriv)
+    const fluxId = await generateExternalIdentityKeypair(returnData.xpriv);
 
+    
+
+    setFluxPrivKeyWif(fluxAddress.privKeyFlux)
     setAkashAddress(account[0].address || "No address found")
-    setMnemonic(mnemonic)
+    setFluxAddress(fluxAddress.address);
+    setMnemonic(mnemonic);
+    setFluxId(fluxId.address);
+    setFluxIdPrivKey(fluxId.privKey);
   }
 
   const initializeGoogleSignIn = () => {
@@ -184,10 +191,14 @@ export default function LoginPage() {
         deterministic={isDeterministic}
         onConfirm={ () => {
           if (passwordToUse) {
+            console.log(passwordToUse);
             const blob =  passworderEncrypt(passwordToUse, mnemonic)
+            const blob1 =  passworderEncrypt(passwordToUse, FluxIdPrivKey)
             secureLocalStorage.setItem("walletSeed", blob)
+            secureLocalStorage.setItem("FluxId", blob1)
+            secureLocalStorage.setItem("FluxPrivKey", FluxWifPrivKey)
           }
-          localStorage.setItem("account", JSON.stringify({ "akashAddress": akashAddress, "fluxAddress": fluxAddress }))
+          localStorage.setItem("account", JSON.stringify({ "akashAddress": akashAddress, "fluxAddress": fluxAddress, "fluxId": fluxId }))
           setBackupConfirmed(true)
           setShowAccount(true)
         }}

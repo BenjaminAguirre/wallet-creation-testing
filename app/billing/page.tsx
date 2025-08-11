@@ -37,6 +37,11 @@ export default function BillingPage() {
     fetchPrices()
   }, [])
 
+
+const handleSing = () =>{
+    
+}
+
   const formatUsd = (value: number) => `$${value.toFixed(2)}`
 
   return (

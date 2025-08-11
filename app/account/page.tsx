@@ -12,6 +12,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import Sidebar from "@/components/sidebar"
+import { GetZelIdAuthHeader } from "@/lib/sign"
+import { generateExternalIdentityKeypair } from "@/lib/wallet"
+import axios from "axios"
+
+
+
+
 
 export default function Account() {
   const [passwordInput, setPasswordInput] = useState("")
@@ -21,9 +28,10 @@ export default function Account() {
   const [error, setError] = useState<string | null>(null)
 
   // Cargar la dirección automáticamente al montar el componente
-  useEffect(() => {
+  useEffect( () => {
      const stored = localStorage.getItem("account");
-
+    
+  
     if (stored) {
       const parsed = JSON.parse(stored);
       const akashAddress = parsed.akashAddress;
@@ -33,13 +41,35 @@ export default function Account() {
     }
   }, [])
 
+
+  const handleSing = async () =>{
+    const encryptedFluxIdPrivKey = await secureLocalStorage.getItem("FluxId") as string;
+    
+    const decryptedFluxIdPrivKey = await passworderDecrypt("asd", encryptedFluxIdPrivKey)
+    console.log(decryptedFluxIdPrivKey);
+    
+    
+    
+  
+    if (typeof decryptedFluxIdPrivKey !== "string") {
+      throw new Error("Invalid mnemonic format")
+    }
+    const account =  localStorage.getItem("account") as string
+    const  response  = JSON.parse(account)
+    console.log(response);
+    const loginPhraseResponse = await axios.get(
+      "https://api.runonflux.io/id/loginphrase"
+     );
+    
+
+    const data = await GetZelIdAuthHeader(response.fluxId, decryptedFluxIdPrivKey, loginPhraseResponse.data.data)
+    console.log(data);
+  }
   const handleUnlock = async (password: string) => {
     try {
-      const encryptedMnemonic = secureLocalStorage.getItem("walletSeed")
-      if (typeof encryptedMnemonic !== "string") {
-        throw new Error("Missing encrypted wallet seed")
-      }
+      const encryptedMnemonic = await secureLocalStorage.getItem("walletSeed") as string;
       const decryptedMnemonic = await passworderDecrypt(password, encryptedMnemonic)
+      
       if (typeof decryptedMnemonic !== "string") {
         throw new Error("Invalid mnemonic format")
       }
@@ -69,6 +99,9 @@ export default function Account() {
               <p><strong>Flux Address:</strong> {fluxAddress}</p>
             </div>
           )}
+           <Button onClick={() => handleSing()} className="w-full">
+                GetZelSign
+              </Button>
           
           {!mnemonic ? (
             <>

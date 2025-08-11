@@ -60,7 +60,7 @@ export default function ImportWallet() {
 
       localStorage.setItem("account", JSON.stringify({
         akashAddress: accounts[0]?.address,
-        fluxAddress,
+        fluxAddress: fluxAddress.address
       }));
       setMnemonic(mnemonic)
     } catch (err) {

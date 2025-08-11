@@ -3,7 +3,6 @@ import { type NextRequest, NextResponse } from "next/server"
 export async function POST(request: NextRequest) {
   try {
     const { idToken } = await request.json()
-    console.log("Token recibido en el backend:", idToken)
 
     // Ejemplo de verificación del token utilizando el endpoint tokeninfo de Google
     const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`)
